@@ -30,10 +30,16 @@ if (-not $isAdmin) {
 # Handle removal
 if ($Remove) {
     $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $platformToolsPath = [Environment]::ExpandEnvironmentVariables("%USERPROFILE%\AppData\Local\Android\Sdk\platform-tools")
-    $newPath = ($currentPath.Split(';') | Where-Object { $_ -ne $platformToolsPath }) -join ';'
-    [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    Write-Host "ADB path removed from PATH" -ForegroundColor Green
+    $platformToolsPath = if ($CustomPath -and $Path) { [Environment]::ExpandEnvironmentVariables($Path) } else { [Environment]::ExpandEnvironmentVariables("%USERPROFILE%\AppData\Local\Android\Sdk\platform-tools") }
+    
+    if ($currentPath.Split(';') -contains $platformToolsPath) {
+        $newPath = ($currentPath.Split(';') | Where-Object { $_ -ne $platformToolsPath }) -join ';'
+        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+        Write-Host "ADB path removed from PATH" -ForegroundColor Green
+    } else {
+        Write-Host "ADB path not found in PATH" -ForegroundColor Yellow
+        Write-Host "Use -CustomPath to specify the path" -ForegroundColor Yellow
+    }
     exit 0
 }
 
@@ -43,7 +49,8 @@ if (-not $Silent) {
         $useDefault = Read-Host "Use default adb location? (Y/n)"
         if ($useDefault -eq '' -or $useDefault.ToLower().StartsWith('y')) {
             $adbPath = [Environment]::ExpandEnvironmentVariables("%USERPROFILE%\AppData\Local\Android\Sdk\platform-tools")
-        } else {
+        }
+        else {
             $CustomPath = $true
         }
     }
@@ -52,7 +59,8 @@ if (-not $Silent) {
         $adbPath = if ($Path) { $Path } else { Read-Host "Enter custom adb path >" }
         $adbPath = [Environment]::ExpandEnvironmentVariables($adbPath)
     }
-} else {
+}
+else {
     $adbPath = [Environment]::ExpandEnvironmentVariables("%USERPROFILE%\AppData\Local\Android\Sdk\platform-tools")
 }
 
@@ -62,28 +70,47 @@ if (-not (Test-Path $adbPath)) {
     exit 1
 }
 
-# Update PATH
 try {
     $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($currentPath -like "*$adbPath*") {
+    
+    # Check if path already exists
+    if ($currentPath.Split(';') -contains $adbPath) {
         Write-Host "ADB path is already in PATH." -ForegroundColor Yellow
-    } else {
-        $newPath = $currentPath + ";" + $adbPath
-        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-        if ($updatedPath -like "*$adbPath*") {
-            Write-Host "Successfully added ADB to PATH!" -ForegroundColor Green
-        } else {
-            throw "Failed to verify PATH update"
-        }
+        exit 0
     }
 
-    # Refresh current session
-    $env:Path = [Environment]::GetEnvironmentVariable("Path", "User")
+    # Sanitize and add new path
+    $paths = $currentPath.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries)
+    $paths += $adbPath
+    $newPath = $paths -join ';'
 
-    # Verify adb
-    $null = & adb version
-    Write-Host "ADB is now accessible from command line!" -ForegroundColor Green
-} catch {
-    Write-Host "Error: $_" -ForegroundColor Red
+    # Set the new path with correct parameter order
+    [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+    
+    # Verify update
+    $updatedPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($updatedPath.Split(';') -contains $adbPath) {
+        Write-Host "Successfully added ADB to PATH!" -ForegroundColor Green
+        
+        # Refresh current session
+        $env:Path = $updatedPath
+
+        # Test adb command
+        $null = Get-Command adb -ErrorAction SilentlyContinue
+        if ($?) {
+            $adbVersion = & adb version 2>&1
+            Write-Host "ADB is now accessible from command line!" -ForegroundColor Green
+            Write-Host $adbVersion
+        }
+        else {
+            Write-Warning "ADB path added but command not found. You may need to restart your terminal."
+        }
+    }
+    else {
+        throw "Failed to verify PATH update"
+    }
+}
+catch {
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
