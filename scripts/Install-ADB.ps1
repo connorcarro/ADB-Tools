@@ -7,8 +7,36 @@ param(
     [switch]$Force,
 
     [Parameter(HelpMessage = "Show help message")]
-    [switch]$Help
+    [switch]$Help,
+
+    [Parameter(HelpMessage = "Non-interactive mode - no pauses")]
+    [switch]$NonInteractive
 )
+
+# Exit-Script function
+function Exit-Script {
+    param(
+        [int]$ExitCode = 0,
+        [string]$Message
+    )
+
+    if ($Message) {
+        if ($ExitCode -eq 0) {
+            Write-Host $Message -ForegroundColor Green
+        } else {
+            Write-Host $Message -ForegroundColor Red
+        }
+    }
+
+    if (-not $NonInteractive) {
+        if ($Host.Name -eq "ConsoleHost") {
+            Write-Host "`nPress any key to continue..."
+            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        }
+    }
+
+    exit $ExitCode
+}
 
 # Constants
 $DOWNLOAD_URL = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
@@ -102,12 +130,13 @@ EXAMPLES:
     .\Install-ADB.ps1 -Force              # Force reinstall
 "@
     Write-Host $helpText
-    exit 0
+    
+    Exit-Script -ExitCode 0
 }
 
 if ($Help) {
     Show-Help
-    exit 0
+    Exit-Script -ExitCode 0
 }
 
 function Backup-ExistingInstallation {
@@ -129,7 +158,7 @@ try {
         if ($preCheck.Message) {
             Write-Host $preCheck.Message -ForegroundColor Yellow
         }
-        exit 0
+        Exit-Script -ExitCode 0
     }
 
     # Ensure admin rights if system-wide installation requested
@@ -195,7 +224,7 @@ catch {
         Copy-Item -Path $BACKUP_DIR -Destination $DEFAULT_INSTALL_PATH -Recurse -Force
     }
     
-    exit 1
+    Exit-Script -ExitCode 1 -Message "Installation failed."
 }
 finally {
     # Cleanup

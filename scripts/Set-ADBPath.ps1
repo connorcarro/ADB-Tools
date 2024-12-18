@@ -3,8 +3,34 @@ param(
     [switch]$CustomPath,
     [switch]$Silent,
     [switch]$Remove,
-    [string]$Path
+    [string]$Path,
+    [switch]$NonInteractive
 )
+
+# Exit-Script function
+function Exit-Script {
+    param(
+        [int]$ExitCode = 0,
+        [string]$Message
+    )
+
+    if ($Message) {
+        if ($ExitCode -eq 0) {
+            Write-Host $Message -ForegroundColor Green
+        } else {
+            Write-Host $Message -ForegroundColor Red
+        }
+    }
+
+    if (-not $NonInteractive) {
+        if ($Host.Name -eq "ConsoleHost") {
+            Write-Host "`nPress any key to continue..."
+            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        }
+    }
+
+    exit $ExitCode
+}
 
 # Help message
 $helpText = @"
@@ -18,7 +44,7 @@ Usage:
 
 if ($PSBoundParameters.ContainsKey('Help')) {
     Write-Host $helpText
-    exit 0
+    Exit-Script -ExitCode 0
 }
 
 # Admin check
@@ -40,7 +66,8 @@ if ($Remove) {
         Write-Host "ADB path not found in PATH" -ForegroundColor Yellow
         Write-Host "Use -CustomPath to specify the path" -ForegroundColor Yellow
     }
-    exit 0
+
+    Exit-Script -ExitCode 0
 }
 
 # Path selection
@@ -67,7 +94,7 @@ else {
 if (-not (Test-Path $adbPath)) {
     Write-Host "ADB directory not found at: $adbPath" -ForeGroundColor Red
     Write-Host "Please make sure Android SDK is installed or provide valid path." -ForegroundColor Yellow
-    exit 1
+    Exit-Script -ExitCode 1 -Message "ADB path not found"
 }
 
 try {
@@ -76,7 +103,7 @@ try {
     # Check if path already exists
     if ($currentPath.Split(';') -contains $adbPath) {
         Write-Host "ADB path is already in PATH." -ForegroundColor Yellow
-        exit 0
+        Exit-Script -ExitCode 0
     }
 
     # Sanitize and add new path
@@ -112,5 +139,5 @@ try {
 }
 catch {
     Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+    Exit-Script -ExitCode 1
 }
